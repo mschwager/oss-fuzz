@@ -16,38 +16,33 @@
 
 FROM gcr.io/oss-fuzz-base/base-builder
 
-RUN git clone https://github.com/trailofbits/ruzzy.git $SRC/ruzzy
+ARG RUBY_VERSION="3.3.4"
 
-RUN install_ruby.sh
-ENV PATH="$PATH:/usr/local/rvm/rubies/ruby-3.3.1/bin"
+RUN apt update && apt install -y \
+    lsb-release \
+    software-properties-common \
+    gnupg2 \
+    binutils \
+    libyaml-dev
 
-RUN gem update --system 3.5.11
+SHELL ["/bin/bash", "-lc"]
 
-# Install ruzzy
-WORKDIR $SRC/ruzzy
+RUN gpg2 \
+    --keyserver keyserver.ubuntu.com \
+    --recv-keys 409B6B1796C275462A1703113804BB82D39DC0E3 7D2BAF1CF37B13E2069D6956105BD0E739499BDB && \
+    curl -sSL https://get.rvm.io | bash -s stable && \
+    echo "source /etc/profile.d/rvm.sh" >> /etc/bash.bashrc
+
+RUN rvm requirements && \
+    rvm install $RUBY_VERSION && \
+    rvm use $RUBY_VERSION --default
+
+RUN gem install tebako --version 0.8.4
 
 # The MAKE variable allows overwriting the make command at runtime. This forces the
 # Ruby C extension to respect ENV variables when compiling, like CC, CFLAGS, etc.
-ENV MAKE="make --environment-overrides V=1"
-
-RUN CC="clang" \
-CXX="clang++" \
-LDSHARED="clang -shared" \
-LDSHAREDXX="clang++ -shared" \
-gem build
-
 RUN MAKE="make --environment-overrides V=1" \
-CC="clang" \
-CXX="clang++" \
-LDSHARED="clang -shared" \
-LDSHAREDXX="clang++ -shared" \
-CXXFLAGS="-fPIC" \
-CFLAGS="-fPIC" \
-RUZZY_DEBUG=1 gem install --install-dir /install/ruzzy --development --verbose ruzzy-*.gem
-
-
-ENV LDSHARED="$CC -shared"
-ENV LDSHAREDXX="$CXX -shared"
-
-ENV GEM_HOME="$OUT/fuzz-gem"
-ENV GEM_PATH="/install/ruzzy"
+    RUZZY_DEBUG="1" \
+    CFLAGS="$CFLAGS -fPIC" \
+    CXXFLAGS="$CXXFLAGS -fPIC" \
+    gem install --verbose ruzzy
